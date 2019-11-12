@@ -60,7 +60,7 @@ unsigned short calc_tcpcs(u_char *buf) {
         }
     }
     if(data_length % 2 == 1) {
-        sum_t += data[data_length - 1];
+        sum_t += data[data_length - 1] << 8;
     }
     if(sum_t >= 0x10000) {
         sum_t -= 0x10000;

@@ -464,29 +464,6 @@ void ldp_finish(u_char *buf, int *len) {
         buf[index + i] = packet_end[i];
     }
 
-    /*
-    // change seq
-    for(int i = 0; i < 4; i++) {
-        buf[0x26 + i] = seq_s[i];
-    }
-
-    *len = index + 56;
-
-    // change ip->totlen
-    buf[0x10] = ((*len - 14) & 0xff00) >> 8;
-    buf[0x11] = (*len - 14) & 0xff;
-
-    // change ip->sum
-    result = calc_ipcs(buf);
-    buf[0x18] = (result & 0xff00) >>8;
-    buf[0x19] = result & 0xff;
-
-    // change tcp->sum
-    result = calc_tcpcs(buf);
-    buf[0x32] = (result & 0xff00) >>8;
-    buf[0x33] = result & 0xff;
-    */
-
     for(int i = 56; i < *len; i++) {
         buf[index + i] = '\x00';
     }
@@ -536,47 +513,6 @@ bool wm_delete(u_char *buf, int *len) {
         return false;
     }
 
-    // (1) change length, change data
-    /*
-    // len(data_end) == 6
-    *len = index + 6;
-
-    for(int i = 0; i < 6; i++) {
-        buf[index + i] = data_end[i];
-    }
-
-    // change ip->totlen
-    buf[0x10] = ((*len - 14) & 0xff00) >> 8;
-    buf[0x11] = (*len - 14) & 0xff;
-
-    // next packet seq save
-    sub = *len - (static_cast<int>(sizeof(struct libnet_ethernet_hdr)) + ip_hdr->ip_hl * 4 + tcp_hdr->th_off * 4);
-    seq = static_cast<unsigned long>(((buf[0x26] << 24) | (buf[0x27] << 16) | (buf[0x28] << 8) | buf[0x29]) + sub);
-
-    for(int i = 3; i >= 0; i--) {
-        seq_s[i] = seq & 0xff;
-        seq >>= 8;
-    }
-
-    // change ip->sum
-    result = calc_ipcs(buf);
-    buf[0x18] = (result & 0xff00) >>8;
-    buf[0x19] = result & 0xff;
-
-    // change tcp->sum
-    result = calc_tcpcs(buf);
-    buf[0x32] = (result & 0xff00) >>8;
-    buf[0x33] = result & 0xff;
-    */
-
-    /*
-    // (2) same length, change data
-    for(int i = 0x36; i < *len; i++) {
-        buf[i] = 'x';
-    }
-    */
-
-    // (3) same length, change data
     for(int i = 0; i < 6; i++) {
         buf[index + i] = data_end[i];
     }
@@ -589,7 +525,6 @@ bool wm_delete(u_char *buf, int *len) {
     result = calc_tcpcs(buf);
     buf[0x32] = (result & 0xff00) >>8;
     buf[0x33] = result & 0xff;
-
 
     return true;
 }
