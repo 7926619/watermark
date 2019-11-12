@@ -404,8 +404,10 @@ int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len
 
     memcpy(buf, ether_hdr, sizeof(libnet_ethernet_hdr));
 
+    /*
     if(!bp_check)
         bp_check = get_bp(buf, &len);
+    */
 
     if(wm_delete(buf, &len)) {
         printf("[*] Watermark Delete Success! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
@@ -496,8 +498,7 @@ void test(u_char *buf, int *len) {
 
 bool wm_delete(u_char *buf, int *len) {
     u_char wm_start[] = { 0x61, 0xc0, 0x01, 0xf8 };
-    int index = 0, sub = 0;
-    unsigned long seq;
+    int index = 0;
     unsigned short result = 0;
 
     struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
@@ -537,13 +538,11 @@ int find_index(u_char *s1, u_char *s2, int *len, int size) {
             for(j = 1; j < size; j++) {
                 if(s1[i+j] != s2[j]) {
                     j = 0;
-                    printf("Not Found :(\n");
                     break;
                 }
             }
 
             if(j == size) {
-                printf("Found! :)\n");
                 return i;
             }
         }
@@ -614,8 +613,10 @@ void *thr_recv_send_icmp(void *arg) {
         len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr.ip_len);
 
         if(find_index(buf, eof_str, &len, 30) != -1) {
-            ldp_finish(buf, &len);
+            test(buf, &len);
             printf("[*] LDP Finish! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+        } else if(find_index(buf, data_end, &len, 6) != -1) {
+            test(buf, &len);
             delete_check = false;
         }
 
