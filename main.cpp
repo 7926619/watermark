@@ -49,8 +49,9 @@ int send_icmp(pcap_t *fp, ip_set set, u_char *buf, int len);
 
 bool get_bp(u_char *buf, int *len);
 void ldp_finish(u_char *buf, int *len);
+void test(u_char *buf, int *len);
 bool wm_delete(u_char *buf, int *len);
-int find_index(u_char *s1, u_char *s2, int *len);
+int find_index(u_char *s1, u_char *s2, int *len, int size);
 u_char *find_pos(u_char *s1, u_char *s2, int *len, int size);
 
 void *thr_send_arp(void *arg);
@@ -463,6 +464,7 @@ void ldp_finish(u_char *buf, int *len) {
         buf[index + i] = packet_end[i];
     }
 
+    /*
     // change seq
     for(int i = 0; i < 4; i++) {
         buf[0x26 + i] = seq_s[i];
@@ -483,6 +485,36 @@ void ldp_finish(u_char *buf, int *len) {
     result = calc_tcpcs(buf);
     buf[0x32] = (result & 0xff00) >>8;
     buf[0x33] = result & 0xff;
+    */
+
+    for(int i = 56; i < *len; i++) {
+        buf[index + i] = '\x00';
+    }
+
+    // change tcp->sum
+    result = calc_tcpcs(buf);
+    buf[0x32] = (result & 0xff00) >>8;
+    buf[0x33] = result & 0xff;
+}
+
+void test(u_char *buf, int *len) {
+    struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
+    struct libnet_ipv4_hdr *ip_hdr = reinterpret_cast<libnet_ipv4_hdr *>(malloc(sizeof(libnet_ipv4_hdr)));
+    struct libnet_tcp_hdr *tcp_hdr = reinterpret_cast<libnet_tcp_hdr *>(malloc(sizeof(libnet_tcp_hdr)));
+    unsigned short result = 0;
+
+    memcpy(ether_hdr, buf, sizeof(struct libnet_ethernet_hdr));
+    memcpy(ip_hdr, buf + sizeof(libnet_ethernet_hdr), sizeof(struct libnet_ipv4_hdr));
+    memcpy(tcp_hdr, buf + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
+
+    for(int i = sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4 + sizeof(struct libnet_tcp_hdr); i < *len; i++) {
+        buf[i] = '\x00';
+    }
+
+    // change tcp->sum
+    result = calc_tcpcs(buf);
+    buf[0x32] = (result & 0xff00) >>8;
+    buf[0x33] = result & 0xff;
 }
 
 bool wm_delete(u_char *buf, int *len) {
@@ -498,7 +530,7 @@ bool wm_delete(u_char *buf, int *len) {
     memcpy(ip_hdr, buf + sizeof(libnet_ethernet_hdr), sizeof(struct libnet_ipv4_hdr));
     memcpy(tcp_hdr, buf + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
 
-    index = find_index(buf, wm_start, len);
+    index = find_index(buf, wm_start, len, 4);
     if(index == -1) {
         //printf("start_pos not found...\n");
         return false;
@@ -537,9 +569,20 @@ bool wm_delete(u_char *buf, int *len) {
     buf[0x33] = result & 0xff;
     */
 
+    /*
     // (2) same length, change data
     for(int i = 0x36; i < *len; i++) {
         buf[i] = 'x';
+    }
+    */
+
+    // (3) same length, change data
+    for(int i = 0; i < 6; i++) {
+        buf[index + i] = data_end[i];
+    }
+
+    for(int i = 6; i < *len; i++) {
+        buf[index + i] = '\x00';
     }
 
     // change tcp->sum
@@ -547,22 +590,24 @@ bool wm_delete(u_char *buf, int *len) {
     buf[0x32] = (result & 0xff00) >>8;
     buf[0x33] = result & 0xff;
 
+
     return true;
 }
 
-int find_index(u_char *s1, u_char *s2, int *len) {
+int find_index(u_char *s1, u_char *s2, int *len, int size) {
     int j = 0;
 
     for(int i = 0; i < *len; i++) {
         if(s1[i] == s2[j]) {
-            for(j = 1; j < 4; j++) {
+            for(j = 1; j < size; j++) {
                 if(s1[i+j] != s2[j]) {
                     j = 0;
+                    printf("Not Found :(\n");
                     break;
                 }
             }
 
-            if(j == 4) {
+            if(j == size) {
                 printf("Found! :)\n");
                 return i;
             }
@@ -631,27 +676,19 @@ void *thr_recv_send_icmp(void *arg) {
             break;
         }
 
-        if(delete_check)
-            continue;
-
-        /*
-        if(find_index(buf, eof_str, &len) != -1) {
-            pass_check = false;
-        }
-        */
-
         len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr.ip_len);
+
+        if(find_index(buf, eof_str, &len, 30) != -1) {
+            ldp_finish(buf, &len);
+            printf("[*] LDP Finish! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+            delete_check = false;
+        }
 
         if(!memcmp(t_arg->arp_hdr_s->ar_spa, &ip_hdr.ip_src, sizeof(struct in_addr)) && !memcmp(t_arg->arp_hdr_s->ar_sha, ether_hdr.ether_shost, sizeof(uint8_t)*MAC_LEN)) {
             arp_hdr = t_arg->arp_hdr_t;
-            /*if(pass_check)
-                continue;
-            else if(delete_check) {
-                ldp_finish(buf, &len);
-                printf("[*] LDP Finish! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-                delete_check = false;
-                pass_check = true;
-            }*/
+            if(delete_check) {
+                test(buf, &len);
+            }
         }
         else if(!memcmp(t_arg->arp_hdr_t->ar_spa, &ip_hdr.ip_src, sizeof(struct in_addr)) && !memcmp(t_arg->arp_hdr_t->ar_sha, ether_hdr.ether_shost, sizeof(uint8_t)*MAC_LEN)) {
             arp_hdr = t_arg->arp_hdr_s;

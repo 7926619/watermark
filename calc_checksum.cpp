@@ -23,7 +23,6 @@ unsigned short calc_tcpcs(u_char *buf) {
     psh->placeholder = 0;
     psh->protocol = 6;
     data_length = ntohs(ip_hdr->ip_len) - (tcp_hdr->th_off * 4) - (ip_hdr->ip_hl * 4);
-    printf("data_length: %d\n", data_length);
     psh->tcp_length = htons(tcp_hdr->th_off * 4 + data_length);
 
     tmp = (u_char *)psh;
