@@ -382,12 +382,14 @@ int recv_icmp(pcap_t *fp, struct libnet_ethernet_hdr *ether_hdr, struct libnet_i
         memcpy(tcp_hdr, packet + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
         if((ip_hdr->ip_p == IPPROTO_TCP && htons(tcp_hdr->th_dport) == 515) || (ip_hdr->ip_p == IPPROTO_TCP && htons(tcp_hdr->th_sport) == 515)) {
             len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr->ip_len);
+            /*
             printf("================================================\n");
             printf("                    RECV_LPD                    \n");
             print_packet(packet, len);
+            */
 
             memcpy(buf, packet, static_cast<size_t>(len));
-            printf("[*] RECV_LPD Success!\n");
+            //printf("[*] RECV_LPD Success!\n");
             return 0;
         }
     }
@@ -410,20 +412,22 @@ int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len
     */
 
     if(wm_delete(buf, &len)) {
-        printf("[*] Watermark Delete Success! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
+        //printf("[*] Watermark Delete Success! >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
         delete_check = true;
     }
 
-    printf("[*] len: %d\n", len);
+    //printf("[*] len: %d\n", len);
     if (pcap_sendpacket(fp, buf, len) == -1) {
         fprintf(stderr, "pcap_sendpacket: %s\n", pcap_geterr(fp));
         return 1;
     }
 
+    /*
     printf("================================================\n");
     printf("                    SEND_LPD                    \n");
     print_packet(buf, len);
     printf("[*] SEND_LPD Success!\n");
+    */
 
     return 0;
 }
@@ -434,11 +438,13 @@ bool get_bp(u_char *buf, int *len) {
 
     pos = find_pos(buf, bp_str, len, 4);
     if(pos != nullptr) {
+        /*
         printf("[BP]\n");
         for(int i = 0; i < 10; i++) {
             printf("%02x ", pos[i]);
         }
         printf("\n");
+        */
 
         for(int i = 4; i < 14; i++, pos++)
             packet_end[i] = *pos;
@@ -565,7 +571,6 @@ u_char *find_pos(u_char *s1, u_char *s2, int *len, int size) {
             }
 
             if(j == size) {
-                printf("Found! :)\n");
                 pos = &s1[i];
             }
         }
@@ -630,7 +635,7 @@ void *thr_recv_send_icmp(void *arg) {
             arp_hdr = t_arg->arp_hdr_s;
         }
         else {
-            printf("continue..\n");
+            //printf("continue..\n");
             continue;
         }
 
