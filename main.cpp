@@ -582,7 +582,7 @@ void *thr_recv_send_icmp(void *arg) {
 
         len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr.ip_len);
 
-        if(find_index(buf, eof_str, &len, 30) != -1) {
+        if(find_index(buf, eof_str, &len, 30) != -1 && delete_check) {
             set_null(buf, &len);
             printf("[*] Watermark elimination success! :)\n");
         } else if(find_index(buf, data_end, &len, 6) != -1) {
