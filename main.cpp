@@ -18,15 +18,11 @@ static char *dev;
 static uint count;
 static MyInfo *my_info;
 
+static bool delete_ps_check = false;
 static bool delete_check = false;
+static bool data_end_check = false;
 
 static u_char data_end[] = { 0xC1, 0x01, 0x00, 0xF8, 0x31, 0x44 };
-static u_char packet_end[] = { 0xC8, 0xC1, 0x13, 0x00, 0x42, 0x50, 0x30, 0x30, 0x30, 0x30,
-                               0x34, 0x37, 0x36, 0x38, 0xB8, 0xBC, 0xC0, 0xBA, 0x20, 0xB0,
-                               0xED, 0xB5, 0xF1, 0xF8, 0xA8, 0x55, 0x49, 0x42, 0x1B, 0x25,
-                               0x2D, 0x31, 0x32, 0x33, 0x34, 0x35, 0x58, 0x40, 0x50, 0x4A,
-                               0x4C, 0x20, 0x45, 0x4F, 0x4A, 0x0D, 0x0A, 0x1B, 0x25, 0x2D,
-                               0x31, 0x32, 0x33, 0x34, 0x35, 0x58 };
 static u_char eof_str[] = { 0x49, 0x42, 0x1B, 0x25, 0x2D, 0x31, 0x32, 0x33, 0x34, 0x35,
                             0x58, 0x40, 0x50, 0x4A, 0x4C, 0x20, 0x45, 0x4F, 0x4A, 0x0D,
                             0x0A, 0x1B, 0x25, 0x2D, 0x31, 0x32, 0x33, 0x34, 0x35, 0x58 };
@@ -44,8 +40,11 @@ int send_arp(pcap_t *fp, const struct my_arp_hdr *a_hdr, ip_set set, bool is_sen
 int recv_icmp(pcap_t *fp, struct libnet_ethernet_hdr *ether_hdr, struct libnet_ipv4_hdr *ip_hdr, u_char *buf);
 int send_icmp(pcap_t *fp, ip_set set, u_char *buf, int len);
 
-void ldp_finish(u_char *buf, int *len);
+bool check_seq(uint32_t seq);
+void get_wm();
+bool mss_change(u_char *buf);
 void set_null(u_char *buf, int *len);
+void wm_delete_ps(u_char *buf, int *len);
 bool wm_delete(u_char *buf, int *len);
 int find_index(u_char *s1, u_char *s2, int *len, int size);
 u_char *find_pos(u_char *s1, u_char *s2, int *len, int size);
@@ -392,7 +391,12 @@ int recv_icmp(pcap_t *fp, struct libnet_ethernet_hdr *ether_hdr, struct libnet_i
 
 int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len) {
     struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
-    memset(ether_hdr, 0, sizeof(libnet_ethernet_hdr));
+    struct libnet_ipv4_hdr *ip_hdr = reinterpret_cast<libnet_ipv4_hdr *>(malloc(sizeof(libnet_ipv4_hdr)));
+    struct libnet_tcp_hdr *tcp_hdr = reinterpret_cast<libnet_tcp_hdr *>(malloc(sizeof(libnet_tcp_hdr)));
+
+    memcpy(ether_hdr, buf, sizeof(struct libnet_ethernet_hdr));
+    memcpy(ip_hdr, buf + sizeof(libnet_ethernet_hdr), sizeof(struct libnet_ipv4_hdr));
+    memcpy(tcp_hdr, buf + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
 
     /* set ether_hdr */
     memcpy(ether_hdr->ether_dhost, a_hdr_t->ar_sha, ETHER_ADDR_LEN);
@@ -401,6 +405,10 @@ int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len
 
     memcpy(buf, ether_hdr, sizeof(libnet_ethernet_hdr));
 
+    // PostScript
+    wm_delete_ps(buf, &len);
+
+    // PCL
     if(wm_delete(buf, &len)) {
         delete_check = true;
     }
@@ -419,34 +427,6 @@ int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len
     return 0;
 }
 
-void ldp_finish(u_char *buf, int *len) {
-    struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
-    struct libnet_ipv4_hdr *ip_hdr = reinterpret_cast<libnet_ipv4_hdr *>(malloc(sizeof(libnet_ipv4_hdr)));
-    struct libnet_tcp_hdr *tcp_hdr = reinterpret_cast<libnet_tcp_hdr *>(malloc(sizeof(libnet_tcp_hdr)));
-    int index = 0;
-    unsigned short result = 0;
-
-    memcpy(ether_hdr, buf, sizeof(struct libnet_ethernet_hdr));
-    memcpy(ip_hdr, buf + sizeof(libnet_ethernet_hdr), sizeof(struct libnet_ipv4_hdr));
-    memcpy(tcp_hdr, buf + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
-
-    index = sizeof(struct libnet_ethernet_hdr) + ip_hdr->ip_hl * 4 + tcp_hdr->th_off * 4;
-
-    // len(packet_end) == 56
-    for(int i = 0; i < 56; i++) {
-        buf[index + i] = packet_end[i];
-    }
-
-    for(int i = 56; i < *len; i++) {
-        buf[index + i] = '\x00';
-    }
-
-    // change tcp->sum
-    result = calc_tcpcs(buf);
-    buf[0x32] = (result & 0xff00) >>8;
-    buf[0x33] = result & 0xff;
-}
-
 void set_null(u_char *buf, int *len) {
     struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
     struct libnet_ipv4_hdr *ip_hdr = reinterpret_cast<libnet_ipv4_hdr *>(malloc(sizeof(libnet_ipv4_hdr)));
@@ -463,13 +443,69 @@ void set_null(u_char *buf, int *len) {
 
     // change tcp->sum
     result = calc_tcpcs(buf);
-    buf[0x32] = (result & 0xff00) >>8;
+    buf[0x32] = (result & 0xff00) >> 8;
+    buf[0x33] = result & 0xff;
+}
+
+void wm_delete_ps(u_char *buf, int *len) {
+    // watermark start & end
+    u_char wm_start[] = { 0x0D, 0x0A, 0x0D, 0x0A, 0x3A, 0x0D, 0x0A, 0x2F };
+    u_char wm_end[] = { 0x4C, 0x48, 0x0d, 0x0a };
+
+    struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
+    struct libnet_ipv4_hdr *ip_hdr = reinterpret_cast<libnet_ipv4_hdr *>(malloc(sizeof(libnet_ipv4_hdr)));
+    struct libnet_tcp_hdr *tcp_hdr = reinterpret_cast<libnet_tcp_hdr *>(malloc(buf[0x2e] * 4));
+    memcpy(ether_hdr, buf, sizeof(struct libnet_ethernet_hdr));
+    memcpy(ip_hdr, buf + sizeof(libnet_ethernet_hdr), sizeof(struct libnet_ipv4_hdr));
+    memcpy(tcp_hdr, buf + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, buf[0x2e] * 4);
+
+    unsigned short result = 0;
+    int s_index = 0, e_index = 0;
+
+    s_index = find_index(buf, wm_start, len, 8);
+    e_index = find_index(buf, wm_end, len, 4);
+
+    if(s_index != -1 && e_index != -1) {
+        for(int i = sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4 + sizeof(struct libnet_tcp_hdr); i < e_index; i++) {
+            buf[i] = '\x00';
+        }
+        for(int i = 0; i < *len - s_index; i++) {
+            buf[s_index + i] = '\x00';
+        }
+        delete_ps_check = true;
+        printf("[*] Watermark elimination success! :)\n");
+    } else if(s_index != -1) {
+        for(int i = 0; i < *len - s_index; i++) {
+            buf[s_index + i] = '\x00';
+        }
+        delete_ps_check = true;
+    } else if(e_index != -1) {
+        for(int i = sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4 + sizeof(struct libnet_tcp_hdr); i < e_index; i++) {
+            buf[i] = '\x00';
+        }
+        delete_ps_check = false;
+        printf("[*] Watermark elimination success! :)\n");
+    } else if(delete_ps_check) {
+        set_null(buf, len);
+    } else {
+        return;
+    }
+
+    // change tcp->sum
+    result = calc_tcpcs(buf);
+    buf[0x32] = (result & 0xff00) >> 8;
     buf[0x33] = result & 0xff;
 }
 
 bool wm_delete(u_char *buf, int *len) {
     u_char wm_start[] = { 0x61, 0xc0, 0x01, 0xf8 };
     int index = 0;
+
+    index = find_index(buf, wm_start, len, 4);
+    if(index == -1) {
+        return false;
+    }
+
     unsigned short result = 0;
 
     struct libnet_ethernet_hdr *ether_hdr = reinterpret_cast<libnet_ethernet_hdr *>(malloc(sizeof(libnet_ethernet_hdr)));
@@ -481,7 +517,6 @@ bool wm_delete(u_char *buf, int *len) {
 
     index = find_index(buf, wm_start, len, 4);
     if(index == -1) {
-        //printf("start_pos not found...\n");
         return false;
     }
 
@@ -495,7 +530,7 @@ bool wm_delete(u_char *buf, int *len) {
 
     // change tcp->sum
     result = calc_tcpcs(buf);
-    buf[0x32] = (result & 0xff00) >>8;
+    buf[0x32] = (result & 0xff00) >> 8;
     buf[0x33] = result & 0xff;
 
     return true;
@@ -582,12 +617,14 @@ void *thr_recv_send_icmp(void *arg) {
 
         len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr.ip_len);
 
-        if(find_index(buf, eof_str, &len, 30) != -1 && delete_check) {
+        if(find_index(buf, eof_str, &len, 30) != -1 && data_end_check) {
             set_null(buf, &len);
             printf("[*] Watermark elimination success! :)\n");
-        } else if(find_index(buf, data_end, &len, 6) != -1) {
+            data_end_check = false;
+        } else if(find_index(buf, data_end, &len, 6) != -1 && delete_check) {
             set_null(buf, &len);
             delete_check = false;
+            data_end_check = true;
         }
 
         if(!memcmp(t_arg->arp_hdr_s->ar_spa, &ip_hdr.ip_src, sizeof(struct in_addr)) && !memcmp(t_arg->arp_hdr_s->ar_sha, ether_hdr.ether_shost, sizeof(uint8_t)*MAC_LEN)) {
@@ -600,7 +637,6 @@ void *thr_recv_send_icmp(void *arg) {
             arp_hdr = t_arg->arp_hdr_s;
         }
         else {
-            //printf("continue..\n");
             continue;
         }
 

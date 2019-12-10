@@ -29,3 +29,5 @@ HEADERS += \
     my_thr.h
 
 LIBS += -L/usr/local/lib/ -lpcap
+
+DISTFILES +=
