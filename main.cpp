@@ -339,12 +339,6 @@ int send_arp(pcap_t *fp, const struct my_arp_hdr *a_hdr, ip_set set, bool is_sen
     memcpy(packet, ether_hdr, sizeof(struct libnet_ethernet_hdr));
     memcpy(packet + sizeof(struct libnet_ethernet_hdr), arp_hdr, sizeof(struct my_arp_hdr));
 
-    /*
-    printf("================================================\n");
-    printf("                    SEND_ARP                    \n");
-    print_packet(packet, sizeof(packet));
-    */
-
     if(pcap_sendpacket(fp, packet, sizeof(packet)) == -1) {
         fprintf(stderr, "pcap_sendpacket: %s\n", pcap_geterr(fp));
         return 1;
@@ -377,13 +371,8 @@ int recv_icmp(pcap_t *fp, struct libnet_ethernet_hdr *ether_hdr, struct libnet_i
         memcpy(tcp_hdr, packet + sizeof(libnet_ethernet_hdr) + ip_hdr->ip_hl * 4, sizeof(struct libnet_tcp_hdr));
         if((ip_hdr->ip_p == IPPROTO_TCP && htons(tcp_hdr->th_dport) == 515) || (ip_hdr->ip_p == IPPROTO_TCP && htons(tcp_hdr->th_sport) == 515)) {
             len = sizeof(struct libnet_ethernet_hdr) + ntohs(ip_hdr->ip_len);
-            /*
-            printf("================================================\n");
-            printf("                    RECV_LPD                    \n");
-            print_packet(packet, len);
-            */
-
             memcpy(buf, packet, static_cast<size_t>(len));
+
             return 0;
         }
     }
@@ -417,12 +406,6 @@ int send_icmp(pcap_t *fp, const struct my_arp_hdr *a_hdr_t, u_char *buf, int len
         fprintf(stderr, "pcap_sendpacket: %s\n", pcap_geterr(fp));
         return 1;
     }
-
-    /*
-    printf("================================================\n");
-    printf("                    SEND_LPD                    \n");
-    print_packet(buf, len);
-    */
 
     return 0;
 }
